@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.log
+logs/
+db/*.db
+gunicorn.pid
+.git/
+Ребусы на осетинском.pptx

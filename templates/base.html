@@ -21,17 +21,16 @@
                 <img src="/static/img/ava.png">
             </a>
             <div class="dropdown-menu" aria-labelledby="avatarDropdown">
-                {% if current_user.is_authenticated %}
-                <a class="dropdown-item" href="#">Имя: {{ current_user.name }}</a>
+                {% if session.get('user_name') %}
+                <span class="dropdown-item-text">{{ session['user_name'] }}</span>
                 <a class="dropdown-item" href="/logout">Выйти</a>
                 {% else %}
-                <a class="dropdown-item" href="/login">Войти</a>
-                <a class="dropdown-item" href="/register">Зарегистрироваться</a>
+                <a class="dropdown-item" href="{{ portal_register_url }}">Зарегистрироваться на портале</a>
                 {% endif %}
             </div>
         </div>
 
-        <a class="navbar-brand" href="#">{{user_points}}</a>
+        <a class="navbar-brand" href="#">{{ session.get('user_name') or '' }}</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
                 aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>

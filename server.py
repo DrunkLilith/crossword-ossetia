@@ -1,51 +1,67 @@
+import os
+
 from flask import Flask, render_template, redirect, request, session
 from data import db_session
 from data.categories import Category
 from data.crosswords import Crosswords
-from data.users import User
 from data.words import Words
-from forms.user import RegisterForm, LoginForm
-from flask_login import (
-    LoginManager,
-    login_user,
-    logout_user,
-    login_required,
-    current_user,
-)
+from forms.user import LoginForm
 
-from utils.add_points import add_points
-from utils.get_user_id import get_user_id
-
-
-login_manager = LoginManager()
+from utils import api
 
 
 def main():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = "yandexlyceum_secret_key"
-    login_manager.init_app(app)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "yandexlyceum_secret_key")
 
     db_session.global_init("db/crosswords.db")
 
     return app
 
 
+PORTAL_REGISTER_URL = os.environ.get(
+    "PORTAL_URL", "http://localhost:5086"
+) + "/Account/Register"
+
+
+def _load_portal_user():
+    """Подтягивает имя пользователя портала из игровой сессии (клик по иконке профиля)."""
+    if session.get("user_name"):
+        return
+    game_session_id = session.get("game_session_id")
+    if not game_session_id:
+        return
+    try:
+        data = api.get_game_session()
+    except api.ApiError:
+        return
+    if data and data.get("valid"):
+        session["user_id"] = data.get("userId")
+        session["user_name"] = data.get("userName") or "Игрок"
+
+
 app = main()
-
-
-@login_manager.user_loader
-def load_user(user_id):
-    db_sess = db_session.create_session()
-    return db_sess.query(User).get(user_id)
 
 
 @app.route("/")
 def index():
     session["cur_cross"] = 1
     session["guessed"] = list()
+    # игровая сессия портала: iframe передаёт ?session=<id>
+    session["game_session_id"] = None
+    api.get_game_session_id()
+    _load_portal_user()
     db_sess = db_session.create_session()
     cats = db_sess.query(Category)
-    return render_template("index.html", cats=cats, current_user=current_user)
+    return render_template(
+        "index.html", cats=cats, portal_register_url=PORTAL_REGISTER_URL
+    )
+
+
+@app.route("/start")
+def start():
+    # точка входа из iframe портала: /start?session=<id>
+    return index()
 
 
 @app.route("/crosswords", methods=["POST", "GET"])
@@ -71,7 +87,7 @@ def crossword(id):
         x, y = map(int, cross.coords.split())
         place = int(cross.place)
         f = False
-        guessed = session.get("guessed")
+        guessed = session.get("guessed") or []
         if word in guessed:
             f = True
         for i in range(len(word)):
@@ -121,12 +137,11 @@ def final_check():
     ans = request.form.get("ans")
 
     if quest == ans:
-        # logic with add points fot user
-
+        # начисление баллов через игровую сессию портала
         try:
-            add_points(5)
-        except:
-            print("Обработка ошибки!")
+            api.add_points(5)
+        except api.ApiError as e:
+            print(f"Не удалось начислить баллы: {e}")
 
         return redirect("/victory")
     return redirect(f"/crosswords/{cur_cross}")
@@ -141,62 +156,28 @@ def victory():
 def login():
     form = LoginForm()
     if form.validate_on_submit():
-        db_sess = db_session.create_session()
-        user = db_sess.query(User).filter(User.email == form.email.data).first()
-
-        # logic with get user ID
+        # вход через API портала (сессии, ветка stas-sessions-game)
         try:
-            user_id = get_user_id(form.email.data, form.password.data)
+            api.login(form.email.data, form.password.data)
             return redirect("/")
-        except Exception as e:
-            print("Обработка ошибок!")
-
+        except api.ApiError as e:
             return render_template("login.html", message=e, form=form)
-
-        # if user and user.check_password(form.password.data):
-        #     login_user(user, remember=form.remember_me.data)
-        #     return redirect("/")
-
-        # return render_template(
-        #     "login.html", message="Неправильный логин или пароль", form=form
-        # )
 
     return render_template("login.html", title="Авторизация", form=form)
 
 
 @app.route("/logout")
-@login_required
 def logout():
-    logout_user()
     session.pop("user_id", None)
+    session.pop("user_name", None)
+    session.pop("game_session_id", None)
     return redirect("/")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    form = RegisterForm()
-    if form.validate_on_submit():
-        if form.password.data != form.password_again.data:
-            return render_template(
-                "register.html",
-                title="Регистрация",
-                form=form,
-                message="Пароли не совпадают",
-            )
-        db_sess = db_session.create_session()
-        if db_sess.query(User).filter(User.email == form.email.data).first():
-            return render_template(
-                "register.html",
-                title="Регистрация",
-                form=form,
-                message="Такой пользователь уже есть",
-            )
-        user = User(name=form.name.data, email=form.email.data, about=form.about.data)
-        user.set_password(form.password.data)
-        db_sess.add(user)
-        db_sess.commit()
-        return redirect("/")
-    return render_template("register.html", title="Регистрация", form=form)
+    # регистрация выполняется на портале
+    return redirect(PORTAL_REGISTER_URL)
 
 
 if __name__ == "__main__":
