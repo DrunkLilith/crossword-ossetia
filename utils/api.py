@@ -14,7 +14,7 @@ import os
 
 import requests
 
-API_URL = os.environ.get("LINGVO_API_URL", "http://localhost:5147/api")
+API_URL = os.environ.get("LINGVO_API_URL", "http://game.рудзынг.рф/api")
 
 # сколько секунд ждём ответа портала
 TIMEOUT = 10
