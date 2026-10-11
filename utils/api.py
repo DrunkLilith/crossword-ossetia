@@ -51,7 +51,6 @@ def login(email: str, password: str) -> str:
         raise ApiError("Не получен ID пользователя")
 
     session["user_id"] = user_id
-    session["game_session_id"] = None  # сброс: сессия игры выдаётся заново
     return user_id
 
 
