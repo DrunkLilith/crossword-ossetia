@@ -1,10 +1,8 @@
 """Клиент API портала LingvoGameOs (ветка stas-sessions-game).
 
 Протокол:
-  POST {API}/account/login           {email, password}  -> {"userId": "..."}
-  GET  {API}/game/session/{id}                          -> {"valid", "gameId", "userId", "userName", "totalUserPoints"}
-  POST {API}/score                   {gameSessionId, score} -> {"userId", "newTotalPoints"}
-  GET  {API}/users/{userId}/points                      -> {"points": N}
+  POST {API}/game/session/resolve   {gameSessionId, token} -> {"valid", "gameId", "userId", "userName", "totalUserPoints"}
+  POST {API}/score                   {gameSessionId, score, token} -> {"userId", "newTotalPoints"}
 
 Адрес API берётся из переменной окружения LINGVO_API_URL
 (иначе значение по умолчанию для локальной разработки).
@@ -24,67 +22,65 @@ class ApiError(Exception):
     """Ошибка обращения к API портала (сеть/HTTP/формат ответа)."""
 
 
-def login(email: str, password: str) -> str:
-    """Войти в аккаунт портала; возвращает userId. Кладёт его в flask-сессию."""
-    from flask import session
+def get_game_session_id() -> int | None:
+    """Читает ID новой сессии из query либо возвращает подтверждённый ID."""
+    from flask import request, session
 
-    if not (email and password):
-        raise ApiError("Неправильные данные!")
+    raw = request.args.get("session") if request else None
+    if raw is not None:
+        if not raw.isdigit() or int(raw) <= 0:
+            raise ApiError("Портал передал некорректный ID игровой сессии.")
+        return int(raw)
+    return session.get("game_session_id")
+
+
+def get_game_session():
+    """Проверяет подпись и сохраняет пользователя, выданного порталом."""
+    from flask import request, session
+
+    session_id = get_game_session_id()
+    if not session_id:
+        return None
+    token = (
+        request.args.get("token")
+        if request.args.get("session") is not None
+        else session.get("game_session_token")
+    )
 
     try:
         response = requests.post(
-            f"{API_URL}/account/login",
-            json={"email": email, "password": password},
+            f"{API_URL}/game/session/resolve",
+            json={
+                "gameSessionId": session_id,
+                "token": token,
+            },
             timeout=TIMEOUT,
         )
     except requests.RequestException as e:
         raise ApiError(f"Портал недоступен: {e}") from e
 
     if response.status_code == 401:
-        raise ApiError("Неправильный логин или пароль")
+        raise ApiError("Портал отклонил подпись игровой сессии.")
+    if response.status_code == 404:
+        raise ApiError("Игровая сессия не найдена.")
     if response.status_code != 200:
         raise ApiError(f"Ошибка API ({response.status_code}): {response.text}")
 
     data = response.json()
-    user_id = data.get("userId") if isinstance(data, dict) else None
-    if not user_id:
-        raise ApiError("Не получен ID пользователя")
+    if not isinstance(data, dict) or not data.get("valid") or not data.get("userId"):
+        raise ApiError("Некорректный ответ API игровой сессии.")
+    expected_game_id = os.environ.get("LINGVO_GAME_ID")
+    if not expected_game_id or not expected_game_id.isdigit():
+        raise ApiError("LINGVO_GAME_ID не настроен для этой игры.")
+    if str(data.get("gameId")) != expected_game_id:
+        raise ApiError("Игровая сессия выдана для другой игры.")
 
-    session["user_id"] = user_id
-    return user_id
-
-
-def get_game_session_id() -> int | None:
-    """ID игровой сессии, выданной порталом (?session=...), или None.
-    Вместе с ним портал передаёт HMAC-подпись (?token=...)."""
-    from flask import request, session
-
-    raw = request.args.get("session") if request else None
-    if raw is not None and raw.isdigit():
-        session["game_session_id"] = int(raw)
-        session["game_session_token"] = request.args.get("token")
-    return session.get("game_session_id")
-
-
-def get_game_session():
-    """Данные игровой сессии портала или None, если сессии нет."""
-    session_id = get_game_session_id()
-    if not session_id:
-        return None
-
-    try:
-        response = requests.get(
-            f"{API_URL}/game/session/{session_id}", timeout=TIMEOUT
-        )
-    except requests.RequestException as e:
-        raise ApiError(f"Портал недоступен: {e}") from e
-
-    if response.status_code == 404:
-        return None
-    if response.status_code != 200:
-        raise ApiError(f"Ошибка API ({response.status_code}): {response.text}")
-
-    return response.json()
+    session["game_session_id"] = session_id
+    session["game_session_token"] = token
+    session["portal_user_id"] = data["userId"]
+    session["portal_user_name"] = data.get("userName") or "Игрок"
+    session["portal_total_points"] = data.get("totalUserPoints", 0)
+    return data
 
 
 def add_points(amount: int) -> int:
@@ -121,28 +117,5 @@ def add_points(amount: int) -> int:
     points = response.json().get("newTotalPoints")
     if points is None:
         raise ApiError("Некорректный ответ API")
+    session["portal_total_points"] = points
     return points
-
-
-def get_points() -> int:
-    """Текущий общий счёт пользователя портала."""
-    from flask import session
-
-    user_id = session.get("user_id")
-    if not user_id:
-        raise ApiError("Пользователь не авторизован.")
-
-    try:
-        response = requests.get(
-            f"{API_URL}/users/{user_id}/points", timeout=TIMEOUT
-        )
-    except requests.RequestException as e:
-        raise ApiError(f"Портал недоступен: {e}") from e
-
-    if response.status_code != 200:
-        raise ApiError(f"Ошибка API ({response.status_code}): {response.text}")
-
-    data = response.json()
-    if isinstance(data, dict):
-        return data.get("points", 0)
-    return data

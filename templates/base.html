@@ -23,7 +23,9 @@
             <div class="dropdown-menu" aria-labelledby="avatarDropdown">
                 {% if session.get('user_name') %}
                 <span class="dropdown-item-text">{{ session['user_name'] }}</span>
+                {% if not session.get('portal_user_name') %}
                 <a class="dropdown-item" href="{{ url_for('logout') }}">Выйти</a>
+                {% endif %}
                 {% else %}
                 <a class="dropdown-item" href="{{ portal_register_url }}">Зарегистрироваться на портале</a>
                 {% endif %}

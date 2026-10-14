@@ -6,8 +6,6 @@ from data import db_session
 from data.categories import Category
 from data.crosswords import Crosswords
 from data.words import Words
-from forms.user import LoginForm
-
 from utils import api
 
 
@@ -32,19 +30,14 @@ def main():
 PORTAL_REGISTER_URL = os.environ.get(
     "PORTAL_URL", "http://localhost:5086"
 ) + "/Account/Register"
+PORTAL_LOGIN_URL = os.environ.get(
+    "PORTAL_URL", "http://localhost:5086"
+) + "/Account/Login"
 
 
 def _load_portal_user():
-    """Подтягивает имя пользователя портала из игровой сессии (клик по иконке профиля)."""
-    if session.get("user_name"):
-        return
-    game_session_id = session.get("game_session_id")
-    if not game_session_id:
-        return
-    try:
-        data = api.get_game_session()
-    except api.ApiError:
-        return
+    """Подтягивает подтверждённого пользователя из подписанной игровой сессии."""
+    data = api.get_game_session()
     if data and data.get("valid"):
         session["user_id"] = data.get("userId")
         session["user_name"] = data.get("userName") or "Игрок"
@@ -57,10 +50,10 @@ app = main()
 def index():
     session["cur_cross"] = 1
     session["guessed"] = list()
-    # игровая сессия портала: iframe передаёт ?session=<id>
-    session["game_session_id"] = None
-    api.get_game_session_id()
-    _load_portal_user()
+    try:
+        _load_portal_user()
+    except api.ApiError as exc:
+        return f"Игровая сессия отклонена: {exc}", 401
     db_sess = db_session.create_session()
     cats = db_sess.query(Category)
     return render_template(
@@ -162,25 +155,20 @@ def victory():
     return render_template("victory.html")
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    form = LoginForm()
-    if form.validate_on_submit():
-        # вход через API портала (сессии, ветка stas-sessions-game)
-        try:
-            api.login(form.email.data, form.password.data)
-            return redirect(url_for("index"))
-        except api.ApiError as e:
-            return render_template("login.html", message=e, form=form)
-
-    return render_template("login.html", title="Авторизация", form=form)
+    return redirect(PORTAL_LOGIN_URL)
 
 
 @app.route("/logout")
 def logout():
     session.pop("user_id", None)
     session.pop("user_name", None)
+    session.pop("portal_user_id", None)
+    session.pop("portal_user_name", None)
+    session.pop("portal_total_points", None)
     session.pop("game_session_id", None)
+    session.pop("game_session_token", None)
     return redirect(url_for("index"))
 
 
