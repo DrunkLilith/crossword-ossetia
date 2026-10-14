@@ -4,10 +4,10 @@
 <div class="margin-block">
     <h1>Выберите категорию</h1>
 </div>
-<form action="/crosswords" method="post">
+<form action="{{ url_for('chose_cross') }}" method="post">
     {% for cat in cats%}
     <div class="margin-block">
-        <button class="button" href="/crosswords" type="submit" value="{{cat.id}}" name="cat">
+        <button class="button" type="submit" value="{{cat.id}}" name="cat">
             {{cat.category_rus}}
         </button>
     </div>

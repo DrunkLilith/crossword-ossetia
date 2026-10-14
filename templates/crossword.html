@@ -15,7 +15,7 @@
                 {% if el[0].islower() %}
                     <td class="{{el[-1]}}">{{el[0].upper()}}</td>
                 {% elif el[0].isdigit() %}
-                    <td class="{{el[-1]}}"><a href="/add_word{{el[1]}}">{{el[0]}}</a></td>
+                    <td class="{{el[-1]}}"><a href="{{ url_for('ans', id=el[1]) }}">{{el[0]}}</a></td>
                 {% else %}
                     <td class="{{el[-1]}}"></td>
                 {% endif %}
@@ -36,7 +36,7 @@
          {% endfor %}
          </ol>
     </div>
-<form method="POST" action="/final_check">
+<form method="POST" action="{{ url_for('final_check') }}">
 <table>
     <td><h2 style="margin-top: 5px">Ответ: </h2></td>
     <td><input type="text" style="margin-left: 30px" name="quest"></td>

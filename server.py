@@ -1,6 +1,7 @@
 import os
 
-from flask import Flask, render_template, redirect, request, session
+from flask import Flask, render_template, redirect, request, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from data import db_session
 from data.categories import Category
 from data.crosswords import Crosswords
@@ -13,6 +14,15 @@ from utils import api
 def main():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "yandexlyceum_secret_key")
+    path_base = os.environ.get("GAME_PATH_BASE", "").rstrip("/")
+    app.config["APPLICATION_ROOT"] = path_base or "/"
+    app.config["SESSION_COOKIE_PATH"] = path_base or "/"
+    app.config["SESSION_COOKIE_NAME"] = os.environ.get(
+        "GAME_COOKIE_NAME", "lingvogameos_crossword_session"
+    )
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+    )
 
     db_session.global_init("db/crosswords.db")
 
@@ -127,7 +137,7 @@ def check(id):
         guessed = session.get("guessed")
         guessed.append(word)
         session["guessed"] = guessed
-    return redirect(f"/crosswords/{cur_cross}")
+    return redirect(url_for("crossword", id=cur_cross))
 
 
 @app.route(f"/final_check", methods=["POST"])
@@ -143,8 +153,8 @@ def final_check():
         except api.ApiError as e:
             print(f"Не удалось начислить баллы: {e}")
 
-        return redirect("/victory")
-    return redirect(f"/crosswords/{cur_cross}")
+        return redirect(url_for("victory"))
+    return redirect(url_for("crossword", id=cur_cross))
 
 
 @app.route("/victory")
@@ -159,7 +169,7 @@ def login():
         # вход через API портала (сессии, ветка stas-sessions-game)
         try:
             api.login(form.email.data, form.password.data)
-            return redirect("/")
+            return redirect(url_for("index"))
         except api.ApiError as e:
             return render_template("login.html", message=e, form=form)
 
@@ -171,7 +181,7 @@ def logout():
     session.pop("user_id", None)
     session.pop("user_name", None)
     session.pop("game_session_id", None)
-    return redirect("/")
+    return redirect(url_for("index"))
 
 
 @app.route("/register", methods=["GET", "POST"])

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<form action="/check/{{ans.id}}" method="POST">
+<form action="{{ url_for('check', id=ans.id) }}" method="POST">
 <div class="margin-block">
     <h2>{{ans.description}}</h2>
     <p><input type="text" placeholder="Введите ответ на осетнинском языке" name="{{ans.id}}"></p>

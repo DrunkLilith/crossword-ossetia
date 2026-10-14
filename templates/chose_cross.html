@@ -6,7 +6,7 @@
 </div>
 {% for cross in crossds %}
     <div class="margin-block">
-        <a class="button" href="/crosswords/{{cross.id}}">Кроссворд {{cross.id}}</a>
+        <a class="button" href="{{ url_for('crossword', id=cross.id) }}">Кроссворд {{cross.id}}</a>
     </div>
 {% endfor %}
 {% endblock %}
