@@ -48,12 +48,12 @@ app = main()
 
 @app.route("/")
 def index():
-    session["cur_cross"] = 1
-    session["guessed"] = list()
     try:
         _load_portal_user()
     except api.ApiError as exc:
         return f"Игровая сессия отклонена: {exc}", 401
+    session["cur_cross"] = 1
+    session["guessed"] = list()
     db_sess = db_session.create_session()
     cats = db_sess.query(Category)
     return render_template(
